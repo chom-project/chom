@@ -1,6 +1,6 @@
 # chom
 
-chom is a cross-platform package manager for Linux, macOS, and Windows. It reads package recipes written in `.cho` (TOML) files and installs supported Python applications and prebuilt software.
+chom is a cross-platform package manager for Linux, macOS, and Windows. It reads package recipes written in `.cho` (TOML) files and installs supported applications and prebuilt software.
 
 ## Features
 
