@@ -1,6 +1,6 @@
-# Chom
+# chom
 
-Chom is a cross-platform package manager for Linux, macOS, and Windows. It reads package recipes written in `.cho` (TOML) files and installs supported Python applications and prebuilt software.
+chom is a cross-platform package manager for Linux, macOS, and Windows. It reads package recipes written in `.cho` (TOML) files and installs supported Python applications and prebuilt software.
 
 ## Features
 
@@ -9,16 +9,16 @@ Chom is a cross-platform package manager for Linux, macOS, and Windows. It reads
 - Verify downloaded archives with SHA-256 before installation.
 - Track installed files so packages can be removed safely.
 - Add and update GitHub-hosted formula repositories.
-- Parse and validate recipes for common native build systems. Native source builds are not yet executed by Chom.
+- Parse and validate recipes for common native build systems. Native source builds are not yet executed by chom.
 
 ## Requirements
 
 - Python 3.9 or newer
-- Git, to install Chom from GitHub
+- Git, to install chom from GitHub
 
-## Install Chom
+## Install chom
 
-Chom is not currently published on PyPI. The commands below install it from this repository with `pipx`, which keeps its Python environment separate from other applications.
+chom is not currently published on PyPI. The commands below install it from this repository with `pipx`, which keeps its Python environment separate from other applications.
 
 Install `pipx` with the package manager for your system, then add its application directory to `PATH`:
 
@@ -51,14 +51,14 @@ py -m pip install --user pipx
 py -m pipx ensurepath
 ```
 
-Close and reopen the terminal after `pipx ensurepath`. Then install Chom on any of these systems:
+Close and reopen the terminal after `pipx ensurepath`. Then install chom on any of these systems:
 
 ```sh
 pipx install git+https://github.com/chom-project/chom.git
 chom --help
 ```
 
-## Use Chom
+## Use chom
 
 Install a formula by name from a configured repository, or install directly from a local `.cho` file:
 
@@ -77,7 +77,7 @@ chom list
 chom remove package-name
 ```
 
-An installation asks for confirmation before downloading. Pass `--yes` to skip the prompt in scripts. Chom stores package data under `~/.local/share/chom` and writes command launchers to `~/.local/bin` on Linux and macOS. Add `~/.local/bin` to `PATH` to run installed commands by name. On Windows, Chom uses the equivalent directory under the user's home folder.
+An installation asks for confirmation before downloading. Pass `--yes` to skip the prompt in scripts. chom stores package data under `~/.local/share/chom` and writes command launchers to `~/.local/bin` on Linux and macOS. Add `~/.local/bin` to `PATH` to run installed commands by name. On Windows, chom uses the equivalent directory under the user's home folder.
 
 Manage formula repositories with:
 
@@ -87,7 +87,7 @@ chom repo add https://github.com/OWNER/REPOSITORY
 chom repo update
 ```
 
-Chom uses `https://github.com/chom-project/repo` as its default formula repository. A formula must be present in a configured repository before it can be installed by name.
+chom uses `https://github.com/chom-project/repo` as its default formula repository. A formula must be present in a configured repository before it can be installed by name.
 
 ## Formula format
 
@@ -128,7 +128,7 @@ cd chom
 python3 -m venv .venv
 ```
 
-Activate the environment and install Chom in editable mode:
+Activate the environment and install chom in editable mode:
 
 ```sh
 # macOS or Linux
