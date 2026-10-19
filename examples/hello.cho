@@ -1,0 +1,23 @@
+format = 1
+name = "hello"
+version = "2.12.1"
+description = "A friendly greeting program."
+license = "GPL-3.0-or-later"
+homepage = "https://www.gnu.org/software/hello/"
+
+[source]
+url = "https://example.org/hello-2.12.1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[build]
+system = "autotools"
+configure_args = ["--disable-nls"]
+build_args = ["-j2"]
+
+[build.options]
+autoreconf = false
+
+[platform.macos.build]
+configure_args = ["--disable-nls"]

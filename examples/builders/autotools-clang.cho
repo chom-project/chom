@@ -1,0 +1,25 @@
+format = 1
+name = "sample-autotools-clang"
+version = "1.0.0"
+description = "Autotools project built with Clang."
+license = "GPL-3.0-or-later"
+platforms = ["macos"]
+
+[source]
+url = "https://example.org/sample-autotools-1.0.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[build]
+system = "autotools"
+configure_args = ["--disable-nls"]
+build_args = ["-j4"]
+install_args = []
+
+[build.env]
+CC = "clang"
+CXX = "clang++"
+
+[build.options]
+autoreconf = false

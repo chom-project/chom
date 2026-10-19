@@ -1,0 +1,22 @@
+format = 1
+name = "sample-node-cli"
+version = "1.0.0"
+description = "Node.js command-line application using npm."
+license = "MIT"
+platforms = ["linux", "macos", "windows"]
+
+[source]
+url = "https://example.org/sample-node-cli-1.0.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[build]
+system = "npm"
+configure_args = ["ci"]
+build_args = ["run", "build"]
+install_args = ["install", "--global", "."]
+
+[build.options]
+script = "build"
+production = true

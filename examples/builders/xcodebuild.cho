@@ -1,0 +1,23 @@
+format = 1
+name = "sample-macos-app"
+version = "1.0.0"
+description = "Apple platform project built with Xcode."
+license = "MIT"
+platforms = ["macos"]
+
+[source]
+url = "https://example.org/sample-macos-app-1.0.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[build]
+system = "xcodebuild"
+configure_args = ["-resolvePackageDependencies"]
+build_args = ["-scheme", "SampleApp"]
+install_args = ["-exportArchive"]
+
+[build.options]
+scheme = "SampleApp"
+configuration = "Release"
+sdk = "macosx"

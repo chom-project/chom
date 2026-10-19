@@ -1,0 +1,23 @@
+format = 1
+name = "sample-rust-cli"
+version = "1.0.0"
+description = "Rust command-line application built with Cargo."
+license = "MIT"
+platforms = ["linux", "macos", "windows"]
+
+[source]
+url = "https://example.org/sample-rust-cli-1.0.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[build]
+system = "cargo"
+build_args = ["build", "--release", "--locked"]
+install_args = []
+
+[build.options]
+profile = "release"
+locked = true
+features = ["cli"]
+no_default_features = false

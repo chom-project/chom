@@ -1,0 +1,54 @@
+format = 1
+name = "rapidtool"
+version = "3.2.0"
+description = "Example cross-platform command-line binary."
+license = "Apache-2.0"
+platforms = ["linux", "macos", "windows"]
+
+[source]
+url = "https://example.org/rapidtool-placeholder.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[build]
+system = "prebuilt"
+
+[install]
+binaries = ["bin/rapidtool"]
+
+[platform.linux]
+architectures = ["x86_64"]
+
+[platform.linux.x86_64.source]
+url = "https://example.org/rapidtool-3.2.0-linux-x86_64.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[platform.macos]
+architectures = ["arm64", "x86_64"]
+
+[platform.macos.arm64.source]
+url = "https://example.org/rapidtool-3.2.0-macos-arm64.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[platform.macos.x86_64.source]
+url = "https://example.org/rapidtool-3.2.0-macos-x86_64.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[platform.windows]
+architectures = ["x86_64"]
+
+[platform.windows.x86_64.source]
+url = "https://example.org/rapidtool-3.2.0-windows-x86_64.zip"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "zip"
+strip_components = 0
+
+[platform.windows.install]
+binaries = ["rapidtool.exe"]

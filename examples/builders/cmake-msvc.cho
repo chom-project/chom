@@ -1,0 +1,26 @@
+format = 1
+name = "sample-cmake-msvc"
+version = "1.0.0"
+description = "CMake project built with MSVC."
+license = "MIT"
+platforms = ["windows"]
+
+[source]
+url = "https://example.org/sample-cmake-1.0.0.zip"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "zip"
+strip_components = 1
+
+[build]
+system = "cmake"
+configure_args = ["-S", ".", "-B", "build", "-A", "x64"]
+build_args = ["--build", "build", "--config", "Release"]
+install_args = ["--install", "build", "--config", "Release"]
+
+[build.env]
+CC = "cl"
+CXX = "cl"
+
+[build.options]
+generator = "Visual Studio 17 2022"
+build_type = "Release"

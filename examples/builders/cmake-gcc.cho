@@ -1,0 +1,26 @@
+format = 1
+name = "sample-cmake-gcc"
+version = "1.0.0"
+description = "CMake project built with GCC."
+license = "MIT"
+platforms = ["linux"]
+
+[source]
+url = "https://example.org/sample-cmake-1.0.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+archive = "tar.gz"
+strip_components = 1
+
+[build]
+system = "cmake"
+configure_args = ["-S", ".", "-B", "build"]
+build_args = ["--build", "build", "--parallel"]
+install_args = ["--install", "build"]
+
+[build.env]
+CC = "gcc"
+CXX = "g++"
+
+[build.options]
+generator = "Ninja"
+build_type = "Release"
