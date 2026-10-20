@@ -99,8 +99,17 @@ def _safe_target(root: Path, member_name: str, strip_components: int) -> Path | 
     return target
 
 
-def _extract(archive: Path, destination: Path, kind: str, strip_components: int, progress: InstallProgress | None = None) -> None:
+def _extract(
+    archive: Path,
+    destination: Path,
+    kind: str,
+    strip_components: int,
+    progress: InstallProgress | None = None,
+    _expanded_size: list[int] | None = None,
+) -> None:
     destination.mkdir(parents=True, exist_ok=True)
+    expanded_size = _expanded_size if _expanded_size is not None else [0]
+    max_expanded_size = 4 * 1024 * 1024 * 1024
     if kind == "auto":
         name = archive.name.lower()
         if name.endswith((".tar.gz", ".tgz", ".tar.xz", ".tar.bz2", ".tar")):
@@ -136,6 +145,70 @@ def _extract(archive: Path, destination: Path, kind: str, strip_components: int,
                 if attached:
                     subprocess.run(["hdiutil", "detach", "-quiet", str(mountpoint)], check=False)
         return
+    if kind == "msi":
+        if platform.system() != "Windows":
+            raise InstallError("MSI packages can only be extracted on Windows")
+        try:
+            subprocess.run(
+                ["msiexec.exe", "/a", str(archive), "/qn", f"TARGETDIR={destination}"],
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise InstallError(f"could not extract MSI package: {exc}") from exc
+        return
+    if kind == "deb-bundle":
+        budget = [0]
+        with tempfile.TemporaryDirectory(prefix="chom-deb-bundle-") as temp_name:
+            bundle = Path(temp_name) / "bundle"
+            _extract(archive, bundle, "tar.gz", strip_components, progress, budget)
+            packages = sorted(bundle.rglob("*.deb"))
+            if not packages:
+                raise InstallError("Debian package bundle contains no .deb files")
+            for package in packages:
+                # Desktop integration packages contain absolute /opt symlinks, which
+                # cannot work safely inside a per-user Chom prefix.
+                if "-debian-menus_" in package.name:
+                    continue
+                try:
+                    with package.open("rb") as source:
+                        if source.read(8) != b"!<arch>\n":
+                            raise InstallError(f"invalid Debian package: {package.name}")
+                        found_data = False
+                        while True:
+                            header = source.read(60)
+                            if not header:
+                                break
+                            if len(header) != 60 or header[58:60] != b"`\n":
+                                raise InstallError(f"invalid ar header in Debian package: {package.name}")
+                            name = header[:16].decode("ascii", errors="strict").strip().rstrip("/")
+                            try:
+                                size = int(header[48:58].decode("ascii").strip())
+                            except ValueError as exc:
+                                raise InstallError(f"invalid ar member size in Debian package: {package.name}") from exc
+                            if size < 0 or size > 1024 * 1024 * 1024:
+                                raise InstallError(f"invalid ar member size in Debian package: {package.name}")
+                            if name.startswith("data.tar"):
+                                found_data = True
+                                with tempfile.TemporaryDirectory(prefix="chom-deb-data-") as data_temp:
+                                    data_archive = Path(data_temp) / name
+                                    remaining = size
+                                    with data_archive.open("wb") as output:
+                                        while remaining:
+                                            chunk = source.read(min(1024 * 1024, remaining))
+                                            if not chunk:
+                                                raise InstallError(f"truncated data archive in Debian package: {package.name}")
+                                            output.write(chunk)
+                                            remaining -= len(chunk)
+                                    _extract(data_archive, destination, "tar", 0, progress, budget)
+                                if size % 2:
+                                    source.read(1)
+                                break
+                            source.seek(size + (size % 2), os.SEEK_CUR)
+                        if not found_data:
+                            raise InstallError(f"Debian package has no data archive: {package.name}")
+                except (OSError, UnicodeDecodeError) as exc:
+                    raise InstallError(f"could not read Debian package {package.name}: {exc}") from exc
+        return
     extracted_size = 0
     if kind in {"tar", "tar.gz", "tar.xz", "tar.bz2"}:
         try:
@@ -155,8 +228,9 @@ def _extract(archive: Path, destination: Path, kind: str, strip_components: int,
                     target.mkdir(parents=True, exist_ok=True)
                 elif item.isfile():
                     extracted_size += item.size
-                    if extracted_size > 1024 * 1024 * 1024:
-                        raise InstallError("archive expands beyond 1 GiB")
+                    expanded_size[0] += item.size
+                    if expanded_size[0] > max_expanded_size:
+                        raise InstallError("archive expands beyond 4 GiB")
                     target.parent.mkdir(parents=True, exist_ok=True)
                     stream = source.extractfile(item)
                     if stream is None:
@@ -213,8 +287,9 @@ def _extract(archive: Path, destination: Path, kind: str, strip_components: int,
                     target.mkdir(parents=True, exist_ok=True)
                     continue
                 extracted_size += item.file_size
-                if extracted_size > 1024 * 1024 * 1024:
-                    raise InstallError("archive expands beyond 1 GiB")
+                expanded_size[0] += item.file_size
+                if expanded_size[0] > max_expanded_size:
+                    raise InstallError("archive expands beyond 4 GiB")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with source.open(item) as input_file, target.open("wb") as output:
                     shutil.copyfileobj(input_file, output)

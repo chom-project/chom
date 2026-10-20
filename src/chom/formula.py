@@ -51,7 +51,7 @@ BUILD_KEYS = {
 }
 PLATFORMS = {"linux", "macos", "windows"}
 ARCHITECTURES = {"x86_64", "arm64", "aarch64", "i686"}
-ARCHIVE_TYPES = {"auto", "tar", "tar.gz", "tar.xz", "tar.bz2", "zip", "dmg", "none"}
+ARCHIVE_TYPES = {"auto", "tar", "tar.gz", "tar.xz", "tar.bz2", "zip", "dmg", "msi", "deb-bundle", "none"}
 
 
 def _fail(path: str, message: str) -> None:
