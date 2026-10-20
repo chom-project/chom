@@ -62,7 +62,10 @@ def command_install(args: argparse.Namespace) -> int:
                 raise RepositoryError("provide a package name or use --file PATH")
             matches = [item for item in all_cached_formulas() if item["formula"]["name"].casefold() == args.package.casefold()]
             if not matches:
-                raise RepositoryError(f"package not found in configured repositories: {args.package}")
+                raise RepositoryError(
+                    f"package not found in the local repository cache: {args.package}; "
+                    "run 'chom repo update' to refresh it"
+                )
             repository_order = [item["name"] for item in list_repositories()]
             selected_repo = next((name for name in repository_order if any(item["repo"] == name for item in matches)), None)
             repo_matches = [item for item in matches if item["repo"] == selected_repo]
@@ -137,6 +140,7 @@ def command_search(args: argparse.Namespace) -> int:
     except RepositoryError as exc:
         print(f"chom: {exc}", file=sys.stderr)
         return 1
+    has_cached_formulas = bool(entries)
     query = args.query.casefold()
     if args.repo:
         entries = [item for item in entries if item["repo"].casefold() == args.repo.casefold()]
@@ -150,7 +154,10 @@ def command_search(args: argparse.Namespace) -> int:
         formula = item["formula"]
         print(f"{formula['name']} {formula['version']}\t{formula['description']}\t{item['repo']}")
     if not found:
-        print("No matching formulas found.")
+        if not has_cached_formulas:
+            print("No formulas in the local cache. Run 'chom repo update' to download repository formulas.")
+        else:
+            print("No matching formulas found.")
     return 0
 
 

@@ -87,7 +87,7 @@ chom repo add https://github.com/OWNER/REPOSITORY
 chom repo update
 ```
 
-chom uses `https://github.com/chom-project/repo` as its default formula repository. A formula must be present in a configured repository before it can be installed by name.
+chom uses `https://github.com/chom-project/repo` as its default formula repository. `chom repo update` downloads formulas into `~/.cache/chom/repositories`; `chom search` and `chom install` read that local cache and do not contact GitHub. Run `chom repo update` again when you want to refresh the cached formulas. A formula must be present in a configured repository and downloaded to the local cache before it can be installed by name.
 
 ## Formula format
 

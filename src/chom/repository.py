@@ -180,12 +180,10 @@ def cached_formulas(repository: dict) -> list[dict]:
     return results
 
 
-def all_cached_formulas(*, refresh_if_empty: bool = True) -> list[dict]:
+def all_cached_formulas() -> list[dict]:
+    """Return formulas from the local cache without contacting repositories."""
     repositories = list_repositories()
     result = []
     for repository in repositories:
-        formulas = cached_formulas(repository)
-        if not formulas and refresh_if_empty:
-            formulas = update_repository(repository)
-        result.extend(formulas)
+        result.extend(cached_formulas(repository))
     return result
