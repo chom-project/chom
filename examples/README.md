@@ -8,4 +8,4 @@ The builder examples show compiler selection through build.env and common build 
 
 The MSVC example assumes CMake is run from a Visual Studio developer environment so the compiler, SDK, and linker are available. The binary example selects separate source archives and executable paths by operating system and CPU architecture. Declared binaries are copied into ~/.local/bin.
 
-All example URLs and SHA-256 values are placeholders. The examples are for formula design only; do not install them. Native build systems are parsed and validated, but their build execution is not implemented yet. The current installer supports Python applications and prebuilt binary files.
+All example URLs and SHA-256 values are placeholders. The examples are for formula design only; do not install them. The installer executes Meson source builds with argument arrays and supports Python applications and prebuilt binary files. Other native build systems remain parse-and-validate only.

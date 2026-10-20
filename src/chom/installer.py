@@ -268,6 +268,10 @@ def install_formula(formula: dict, *, yes: bool = False) -> Path:
     dependencies = formula.get("dependencies", [])
     if dependencies:
         print("  dependencies: " + ", ".join(dependencies))
+    if system == "meson":
+        print("  IMPORTANT: this package will be compiled from source on this computer.")
+        print("  Meson, a suitable compiler, and the project's system library development files must already be installed.")
+        print("  Chom does not install operating-system build dependencies.")
     print("  note: build steps and dependency installers can run third-party code.")
     if not yes and input("Continue? [y/N] ").strip().lower() not in {"y", "yes"}:
         raise InstallError("installation cancelled")
@@ -349,10 +353,55 @@ def install_formula(formula: dict, *, yes: bool = False) -> Path:
                     contents = f'#!/bin/sh\nexec /usr/bin/open -a {shlex.quote(str(executable))} --args "$@"\n'
                 else:
                     contents = f'#!/bin/sh\nexec {shlex.quote(str(executable))} "$@"\n'
+                    if executable.is_file() and not executable.stat().st_mode & 0o111:
+                        executable.chmod(executable.stat().st_mode | 0o111)
                 target.write_text(contents, encoding="utf-8")
                 if os.name != "nt":
                     target.chmod(0o755)
             launcher = root
+        elif system == "meson":
+            # Native builds run in the verified, extracted source tree.  The
+            # formula controls Meson's argument vectors; no shell is involved.
+            # {prefix} expands to Chom's versioned package directory.
+            def expand(args: list[str]) -> list[str]:
+                return [arg.replace("{prefix}", str(root)) for arg in args]
+
+            environment = os.environ.copy()
+            environment.update(build.get("env", {}))
+            configure_args = expand(build.get("configure_args", []))
+            build_args = expand(build.get("build_args", []))
+            install_args = expand(build.get("install_args", []))
+            try:
+                if not configure_args:
+                    raise InstallError("Meson formulas must declare configure_args")
+                progress.update(73, "configuring source")
+                subprocess.run(["meson", *configure_args], cwd=staging, env=environment, check=True)
+                progress.update(78, "building source")
+                subprocess.run(["meson", *build_args], cwd=staging, env=environment, check=True)
+                progress.update(91, "installing build")
+                subprocess.run(["meson", *install_args], cwd=staging, env=environment, check=True)
+                for _, relative, target in launcher_targets:
+                    candidate = root / relative
+                    if not candidate.exists() or not candidate.resolve().is_relative_to(root.resolve()):
+                        raise InstallError(f"launcher target not found: {relative}")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if os.name == "nt":
+                        contents = f'@echo off\r\n"{candidate}" %*\r\n'
+                    elif candidate.is_dir() and candidate.suffix == ".app":
+                        contents = f'#!/bin/sh\nexec /usr/bin/open -a {shlex.quote(str(candidate))} --args "$@"\n'
+                    else:
+                        contents = f'#!/bin/sh\nexec {shlex.quote(str(candidate))} "$@"\n'
+                        if candidate.is_file() and not candidate.stat().st_mode & 0o111:
+                            candidate.chmod(candidate.stat().st_mode | 0o111)
+                    target.write_text(contents, encoding="utf-8")
+                    if os.name != "nt":
+                        target.chmod(0o755)
+                launcher = root
+            except Exception:
+                shutil.rmtree(root, ignore_errors=True)
+                for _, _, target in launcher_targets:
+                    target.unlink(missing_ok=True)
+                raise
         else:
             raise InstallError(f"installation is not implemented for build system '{system}'")
 
@@ -362,6 +411,8 @@ def install_formula(formula: dict, *, yes: bool = False) -> Path:
     elif system == "prebuilt":
         owned_paths.extend(target for _, target in binary_targets)
         owned_paths.extend(Path.home() / target for target in install.get("files", {}).values())
+        owned_paths.extend(target for _, _, target in launcher_targets)
+    elif system == "meson":
         owned_paths.extend(target for _, _, target in launcher_targets)
     receipt = {
         "name": package_name,
