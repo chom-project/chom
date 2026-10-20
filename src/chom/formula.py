@@ -137,7 +137,9 @@ def _parse_platforms(platforms: Any) -> None:
         context = f"platform.{platform}"
         if not isinstance(config, dict):
             _fail(context, "must be a table")
-        _unknown_keys(config, {"source", "build", "install", "architectures", *ARCHITECTURES}, context)
+        _unknown_keys(config, {"version", "source", "build", "install", "architectures", *ARCHITECTURES}, context)
+        if "version" in config:
+            _string(config, "version", context)
         if "architectures" in config:
             _string_list(config["architectures"], f"{context}.architectures")
             unknown_arches = set(config["architectures"]) - ARCHITECTURES
@@ -154,7 +156,9 @@ def _parse_platforms(platforms: Any) -> None:
             arch_context = f"{context}.{arch}"
             if not isinstance(arch_config, dict):
                 _fail(arch_context, "must be a table")
-            _unknown_keys(arch_config, {"source", "build", "install"}, arch_context)
+            _unknown_keys(arch_config, {"version", "source", "build", "install"}, arch_context)
+            if "version" in arch_config:
+                _string(arch_config, "version", arch_context)
             if "source" in arch_config:
                 _parse_source(arch_config["source"], f"{arch_context}.source", require_all=False)
             if "build" in arch_config:
@@ -252,17 +256,27 @@ def parse_formula(path: Path) -> dict[str, Any]:
     if data["build"]["system"] == "python":
         _string(install, "script", "install")
         _string(install, "command", "install")
-    elif data["build"]["system"] == "prebuilt" and not install.get("binaries") and not install.get("files") and not install.get("launchers"):
-        _fail("install", "prebuilt formulas must declare binaries, files, or launchers")
+    elif data["build"]["system"] == "prebuilt":
+        declared_platforms = data.get("platforms", ["linux", "macos", "windows"])
+        for declared_platform in declared_platforms:
+            platform_config = data.get("platform", {}).get(declared_platform, {})
+            declared_arches = platform_config.get("architectures", data.get("architectures", ["x86_64", "arm64"]))
+            for declared_arch in declared_arches:
+                selected = select_formula(data, declared_platform, declared_arch)
+                selected_install = selected.get("install", {})
+                if not selected_install.get("binaries") and not selected_install.get("files") and not selected_install.get("launchers"):
+                    _fail("install", f"prebuilt formula has no install targets for {declared_platform}/{declared_arch}")
 
     return data
 
 
 def select_formula(formula: dict[str, Any], platform: str, architecture: str) -> dict[str, Any]:
     result = dict(formula)
+    result.setdefault("install", {})
     platform_data = formula.get("platform", {}).get(platform, {})
     platform_data = dict(platform_data)
     arch_data = platform_data.pop(architecture, {})
+    result["version"] = arch_data.get("version", platform_data.get("version", result["version"]))
     for key in ("source", "build", "install"):
         for override in (platform_data.get(key), arch_data.get(key)):
             if override:

@@ -146,6 +146,7 @@ def _extract(archive: Path, destination: Path, kind: str, strip_components: int,
             members = source.getmembers()
             files = sum(item.isfile() for item in members)
             completed = 0
+            symlinks: list[tuple[Path, str]] = []
             for item in members:
                 target = _safe_target(destination, item.name, strip_components)
                 if target is None:
@@ -166,8 +167,21 @@ def _extract(archive: Path, destination: Path, kind: str, strip_components: int,
                     completed += 1
                     if progress and files:
                         progress.update(50 + int(completed / files * 20), f"extracting {completed}/{files}")
+                elif item.issym():
+                    if os.name == "nt":
+                        raise InstallError("symbolic links in source archives require a Unix-like platform")
+                    link = PurePosixPath(item.linkname)
+                    if link.is_absolute():
+                        raise InstallError(f"unsafe archive link: {item.name} -> {item.linkname}")
+                    resolved = (target.parent / Path(*link.parts)).resolve()
+                    if not resolved.is_relative_to(destination.resolve()):
+                        raise InstallError(f"unsafe archive link: {item.name} -> {item.linkname}")
+                    symlinks.append((target, item.linkname))
                 else:
                     raise InstallError(f"archive links and special files are not supported: {item.name}")
+            for target, linkname in symlinks:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.symlink_to(linkname)
         return
     if kind == "zip":
         try:
@@ -178,13 +192,23 @@ def _extract(archive: Path, destination: Path, kind: str, strip_components: int,
             members = source.infolist()
             files = sum(not item.is_dir() for item in members)
             completed = 0
+            symlinks: list[tuple[Path, str]] = []
             for item in members:
                 target = _safe_target(destination, item.filename, strip_components)
                 if target is None:
                     continue
                 mode = item.external_attr >> 16
                 if mode and (mode & 0o170000) == 0o120000:
-                    raise InstallError(f"archive links are not supported: {item.filename}")
+                    if os.name == "nt":
+                        raise InstallError("symbolic links in source archives require a Unix-like platform")
+                    with source.open(item) as link_file:
+                        linkname = link_file.read().decode("utf-8")
+                    link = PurePosixPath(linkname)
+                    resolved = (target.parent / Path(*link.parts)).resolve()
+                    if link.is_absolute() or not resolved.is_relative_to(destination.resolve()):
+                        raise InstallError(f"unsafe archive link: {item.filename} -> {linkname}")
+                    symlinks.append((target, linkname))
+                    continue
                 if item.is_dir():
                     target.mkdir(parents=True, exist_ok=True)
                     continue
@@ -198,6 +222,9 @@ def _extract(archive: Path, destination: Path, kind: str, strip_components: int,
                 completed += 1
                 if progress and files:
                     progress.update(50 + int(completed / files * 20), f"extracting {completed}/{files}")
+            for target, linkname in symlinks:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.symlink_to(linkname)
         return
     raise InstallError(f"unsupported archive type: {kind}")
 
@@ -215,6 +242,97 @@ def _create_command(command: str, package_root: Path, script: Path, python: Path
     if os.name != "nt":
         launcher.chmod(0o755)
     return launcher
+
+
+def _native_build_steps(system: str, build: dict, prefix: Path) -> list[tuple[str, list[str]]]:
+    """Translate a validated build table into shell-free build commands."""
+    configure = list(build.get("configure_args", []))
+    compile_args = list(build.get("build_args", []))
+    install_args = list(build.get("install_args", []))
+    options = build.get("options", {})
+    prefix_arg = str(prefix)
+
+    if system == "cargo" and compile_args:
+        if options.get("locked") and "--locked" not in compile_args:
+            compile_args.append("--locked")
+        if options.get("profile") and options["profile"] != "release" and "--profile" not in compile_args:
+            compile_args.extend(["--profile", options["profile"]])
+        if options.get("features") and "--features" not in compile_args:
+            compile_args.extend(["--features", ",".join(options["features"])])
+        if options.get("no_default_features") and "--no-default-features" not in compile_args:
+            compile_args.append("--no-default-features")
+    elif system == "go" and compile_args:
+        if options.get("tags") and "-tags" not in compile_args:
+            compile_args.extend(["-tags", ",".join(options["tags"])])
+        if options.get("ldflags") and "-ldflags" not in compile_args:
+            compile_args.extend(["-ldflags", options["ldflags"]])
+    elif system == "maven" and compile_args and options.get("profiles") and not any(arg.startswith("-P") for arg in compile_args):
+        compile_args.append("-P" + ",".join(options["profiles"]))
+    elif system == "npm" and not compile_args and options.get("script"):
+        compile_args = ["run", options["script"]]
+    elif system == "gradle" and not compile_args and options.get("tasks"):
+        compile_args = list(options["tasks"])
+    elif system == "dotnet" and compile_args:
+        if options.get("configuration") and "--configuration" not in compile_args and "-c" not in compile_args:
+            compile_args.extend(["--configuration", options["configuration"]])
+        if options.get("framework") and "--framework" not in compile_args and "-f" not in compile_args:
+            compile_args.extend(["--framework", options["framework"]])
+        if options.get("runtime") and "--runtime" not in compile_args and "-r" not in compile_args:
+            compile_args.extend(["--runtime", options["runtime"]])
+    elif system == "xcodebuild" and compile_args:
+        for option, flag in (("scheme", "-scheme"), ("configuration", "-configuration"), ("sdk", "-sdk")):
+            if options.get(option) and flag not in compile_args:
+                compile_args.extend([flag, options[option]])
+
+    if system == "cmake":
+        if configure and not any(arg.startswith("-DCMAKE_INSTALL_PREFIX") for arg in configure):
+            configure.append(f"-DCMAKE_INSTALL_PREFIX={prefix_arg}")
+        generator = options.get("generator")
+        if configure and generator and "-G" not in configure:
+            configure.extend(["-G", generator])
+        build_type = options.get("build_type")
+        if configure and build_type and not any(arg.startswith("-DCMAKE_BUILD_TYPE") for arg in configure):
+            configure.append(f"-DCMAKE_BUILD_TYPE={build_type}")
+    elif system == "meson":
+        if configure and not any(arg == "--prefix" or arg.startswith("--prefix=") for arg in configure):
+            configure.extend(["--prefix", prefix_arg])
+        backend = options.get("backend")
+        if configure and backend and not any(arg == "--backend" or arg.startswith("--backend=") for arg in configure):
+            configure.extend(["--backend", backend])
+        build_type = options.get("build_type")
+        if configure and build_type and not any(arg.startswith("--buildtype") for arg in configure):
+            configure.append(f"--buildtype={build_type}")
+
+    if system == "autotools":
+        if not any(arg.startswith("--prefix=") or arg == "--prefix" for arg in configure):
+            configure.append(f"--prefix={prefix_arg}")
+        steps = [("configure", ["sh", "./configure", *configure])]
+        if compile_args:
+            steps.append(("build", ["make", *compile_args]))
+        if install_args:
+            steps.append(("install", ["make", "install", *install_args]))
+        return steps
+
+    tools = {
+        "cmake": "cmake", "meson": "meson", "make": "make", "ninja": "ninja",
+        "cargo": "cargo", "go": "go", "npm": "npm", "pnpm": "pnpm",
+        "yarn": "yarn", "bun": "bun", "pip": "pip", "poetry": "poetry",
+        "uv": "uv", "hatch": "hatch", "dotnet": "dotnet", "maven": "mvn",
+        "gradle": "gradle", "xcodebuild": "xcodebuild",
+    }
+    if system not in tools:
+        raise InstallError(f"installation is not implemented for build system '{system}'")
+    tool = tools[system]
+    steps = []
+    if configure:
+        steps.append(("configure", [tool, *configure]))
+    if compile_args:
+        steps.append(("build", [tool, *compile_args]))
+    if install_args:
+        steps.append(("install", [tool, *install_args]))
+    if not steps:
+        raise InstallError(f"{system} formula must declare at least one build step")
+    return steps
 
 
 def install_formula(formula: dict, *, yes: bool = False) -> Path:
@@ -268,9 +386,9 @@ def install_formula(formula: dict, *, yes: bool = False) -> Path:
     dependencies = formula.get("dependencies", [])
     if dependencies:
         print("  dependencies: " + ", ".join(dependencies))
-    if system == "meson":
-        print("  IMPORTANT: this package will be compiled from source on this computer.")
-        print("  Meson, a suitable compiler, and the project's system library development files must already be installed.")
+    if system not in {"prebuilt", "python"}:
+        print(f"  IMPORTANT: this package will be built from source with {system} on this computer.")
+        print("  Its compiler, build tools, and required system libraries must already be installed.")
         print("  Chom does not install operating-system build dependencies.")
     print("  note: build steps and dependency installers can run third-party code.")
     if not yes and input("Continue? [y/N] ").strip().lower() not in {"y", "yes"}:
@@ -359,31 +477,35 @@ def install_formula(formula: dict, *, yes: bool = False) -> Path:
                 if os.name != "nt":
                     target.chmod(0o755)
             launcher = root
-        elif system == "meson":
-            # Native builds run in the verified, extracted source tree.  The
-            # formula controls Meson's argument vectors; no shell is involved.
-            # {prefix} expands to Chom's versioned package directory.
-            def expand(args: list[str]) -> list[str]:
-                return [arg.replace("{prefix}", str(root)) for arg in args]
-
+        else:
             environment = os.environ.copy()
             environment.update(build.get("env", {}))
-            configure_args = expand(build.get("configure_args", []))
-            build_args = expand(build.get("build_args", []))
-            install_args = expand(build.get("install_args", []))
+            environment["CARGO_INSTALL_ROOT"] = str(root)
+            environment["GOBIN"] = str(root / "bin")
+            environment["npm_config_prefix"] = str(root)
+            if system == "poetry":
+                environment["POETRY_VIRTUALENVS_IN_PROJECT"] = "true"
+            steps = _native_build_steps(system, build, root)
             try:
-                if not configure_args:
-                    raise InstallError("Meson formulas must declare configure_args")
-                progress.update(73, "configuring source")
-                subprocess.run(["meson", *configure_args], cwd=staging, env=environment, check=True)
-                progress.update(78, "building source")
-                subprocess.run(["meson", *build_args], cwd=staging, env=environment, check=True)
-                progress.update(91, "installing build")
-                subprocess.run(["meson", *install_args], cwd=staging, env=environment, check=True)
+                root.mkdir(parents=True, exist_ok=True)
+                for index, (label, argv) in enumerate(steps):
+                    argv = [arg.replace("{prefix}", str(root)) for arg in argv]
+                    if system == "pip" and argv[0] == "pip":
+                        argv = [sys.executable, "-m", "pip", *argv[1:]]
+                    progress.update(72 + int(index / max(len(steps), 1) * 20), f"{label} source")
+                    subprocess.run(argv, cwd=staging, env=environment, check=True)
+                for relative, target in binary_targets:
+                    candidate = staging / relative
+                    if not candidate.is_file() or not candidate.resolve().is_relative_to(staging.resolve()):
+                        raise InstallError(f"built binary not found: {relative}")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(candidate, target)
+                    if os.name != "nt":
+                        target.chmod(target.stat().st_mode | 0o111)
                 for _, relative, target in launcher_targets:
                     candidate = root / relative
                     if not candidate.exists() or not candidate.resolve().is_relative_to(root.resolve()):
-                        raise InstallError(f"launcher target not found: {relative}")
+                        raise InstallError(f"built launcher target not found: {relative}")
                     target.parent.mkdir(parents=True, exist_ok=True)
                     if os.name == "nt":
                         contents = f'@echo off\r\n"{candidate}" %*\r\n'
@@ -399,11 +521,11 @@ def install_formula(formula: dict, *, yes: bool = False) -> Path:
                 launcher = root
             except Exception:
                 shutil.rmtree(root, ignore_errors=True)
+                for _, target in binary_targets:
+                    target.unlink(missing_ok=True)
                 for _, _, target in launcher_targets:
                     target.unlink(missing_ok=True)
                 raise
-        else:
-            raise InstallError(f"installation is not implemented for build system '{system}'")
 
     owned_paths = []
     if system == "python":
@@ -412,7 +534,8 @@ def install_formula(formula: dict, *, yes: bool = False) -> Path:
         owned_paths.extend(target for _, target in binary_targets)
         owned_paths.extend(Path.home() / target for target in install.get("files", {}).values())
         owned_paths.extend(target for _, _, target in launcher_targets)
-    elif system == "meson":
+    elif system not in {"prebuilt", "python"}:
+        owned_paths.extend(target for _, target in binary_targets)
         owned_paths.extend(target for _, _, target in launcher_targets)
     receipt = {
         "name": package_name,
